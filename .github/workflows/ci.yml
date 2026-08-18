@@ -34,4 +34,4 @@ jobs:
         run: docker build --tag cloud-health-api:${{ github.sha }} .
 
       - name: Scan configuration for secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
