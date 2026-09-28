@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import time
 import urllib.request
+import urllib.error
 
 values = dict(line.split('=', 1) for line in Path('.env').read_text().splitlines() if '=' in line)
 auth = base64.b64encode(('admin:' + values['GRAFANA_ADMIN_PASSWORD']).encode()).decode()
@@ -12,8 +13,14 @@ auth = base64.b64encode(('admin:' + values['GRAFANA_ADMIN_PASSWORD']).encode()).
 def get(path, payload=None):
     request = urllib.request.Request('http://127.0.0.1:3000' + path, headers={'Authorization': 'Basic ' + auth, 'Content-Type': 'application/json'},
                                      data=json.dumps(payload).encode() if payload is not None else None)
-    with urllib.request.urlopen(request, timeout=5) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        body = error.read(4096).decode(errors='replace')
+        raise RuntimeError(f'{path}: HTTP {error.code}: {body}') from error
+
+print('Provisioned data sources:', json.dumps(get('/api/datasources')), flush=True)
 
 for attempt in range(30):
     try:
