@@ -1,0 +1,18 @@
+# Explicit opt-in: only backup tooling receives your AWS credential directory.
+x-aws-mount: &aws-mount
+  type: bind
+  source: ${AWS_CONFIG_DIR:?Set AWS_CONFIG_DIR to your AWS credentials/config directory}
+  target: /aws
+  read_only: true
+services:
+  ops:
+    environment: &aws-env
+      AWS_SHARED_CREDENTIALS_FILE: /aws/credentials
+      AWS_CONFIG_FILE: /aws/config
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+    volumes:
+      - *aws-mount
+  backup-scheduler:
+    environment: *aws-env
+    volumes:
+      - *aws-mount

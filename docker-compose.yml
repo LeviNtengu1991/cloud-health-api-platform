@@ -1,11 +1,161 @@
+name: cloud-health-recovery
+x-ops: &ops
+  image: cloud-health-recovery-ops:local
+  build:
+    context: .
+    dockerfile: recovery/Dockerfile
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  environment: &ops-env
+    PGHOST: db
+    PGPORT: '5432'
+    PGUSER: lab_owner
+    PGDATABASE: cloud_health
+    PGPASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/configure.py}
+    RESTORE_HOST: restore-db
+    RESTORE_PORT: '5432'
+    RESTORE_USER: recovery_owner
+    RESTORE_PASSWORD: ${RESTORE_PASSWORD:?Run python3 scripts/configure.py}
+    BACKUP_DIR: /backups
+    S3_BUCKET: ${S3_BUCKET:-}
+    S3_PREFIX: ${S3_PREFIX:-recovery}
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+  volumes: [backups:/backups]
+  depends_on:
+    db: {condition: service_healthy}
+    restore-db: {condition: service_healthy}
 services:
+  db:
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    image: cloud-health-recovery-db:local
+    environment:
+      POSTGRES_USER: lab_owner
+      POSTGRES_DB: cloud_health
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/configure.py}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run python3 scripts/configure.py}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U lab_owner -d cloud_health']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+  restore-db:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_USER: recovery_owner
+      POSTGRES_PASSWORD: ${RESTORE_PASSWORD:?Run python3 scripts/configure.py}
+    volumes: [recovery:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U recovery_owner -d postgres']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    security_opt: [no-new-privileges:true]
   api:
-    build: .
-    ports:
-      - "8080:8080"
+    build:
+      context: .
+      target: runtime
+    ports: ['127.0.0.1:8080:8080']
     restart: unless-stopped
     read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PGHOST: db
+      PGUSER: cloud_api
+      PGDATABASE: cloud_health
+      PGPASSWORD: ${APP_DB_PASSWORD:?Run python3 scripts/configure.py}
+      API_TOKEN: ${API_TOKEN:?Run python3 scripts/configure.py}
+    depends_on:
+      db: {condition: service_healthy}
+  s3-mock:
+    profiles: [testing]
+    build:
+      context: .
+      target: test
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [python, -m, moto.server, -H, '0.0.0.0', -p, '5000']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  unit-tests:
+    profiles: [tools]
+    build:
+      context: .
+      target: test
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./tests:/tests:ro
+      - ./recovery:/app/recovery:ro
+    entrypoint: [python, -m, unittest, discover, -s, /tests, -v]
+  ops:
+    <<: *ops
+    profiles: [tools]
+  backup-scheduler:
+    <<: *ops
+    command: [schedule, --interval, '3600', --keep, '7']
+    restart: unless-stopped
+  recovery-metrics:
+    <<: *ops
+    command: [serve, --port, '9101']
+    ports: ['127.0.0.1:9101:9101']
+    volumes: [backups:/backups:ro]
+  grafana:
+    image: grafana/grafana:13.2.2
+    profiles: [dashboard]
+    ports: ['127.0.0.1:3000:3000']
+    user: '472:472'
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_LOG_MODE: console
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - 'test -n "$$GF_SECURITY_ADMIN_PASSWORD" || { echo "Run python3 scripts/configure.py --grafana"; exit 1; }; exec /run.sh'
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on: [prometheus]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://localhost:3000/api/health']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports: ['127.0.0.1:9090:9090']
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=2d]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+volumes:
+  database:
+  recovery:
+  backups:
+  grafana:
