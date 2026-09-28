@@ -9,8 +9,9 @@ import urllib.request
 values = dict(line.split('=', 1) for line in Path('.env').read_text().splitlines() if '=' in line)
 auth = base64.b64encode(('admin:' + values['GRAFANA_ADMIN_PASSWORD']).encode()).decode()
 
-def get(path):
-    request = urllib.request.Request('http://127.0.0.1:3000' + path, headers={'Authorization': 'Basic ' + auth})
+def get(path, payload=None):
+    request = urllib.request.Request('http://127.0.0.1:3000' + path, headers={'Authorization': 'Basic ' + auth, 'Content-Type': 'application/json'},
+                                     data=json.dumps(payload).encode() if payload is not None else None)
     with urllib.request.urlopen(request, timeout=5) as response:
         return json.load(response)
 
@@ -18,9 +19,21 @@ for attempt in range(30):
     try:
         result = get('/api/dashboards/uid/recovery-lab')
         assert len(result['dashboard']['panels']) == 11
-        assert get('/api/datasources/uid/recovery-prometheus/health')['status'] == 'OK'
+        query = get('/api/ds/query', {
+            'from': 'now-5m', 'to': 'now',
+            'queries': [{'refId': 'A',
+                         'datasource': {'type': 'prometheus', 'uid': 'recovery-prometheus'},
+                         'expr': 'up{job="recovery"}', 'instant': True, 'range': False,
+                         'format': 'time_series', 'intervalMs': 15000, 'maxDataPoints': 1}],
+        })['results']['A']
+        assert not query.get('error'), query.get('error')
+        samples = [value for frame in query.get('frames', [])
+                   for field, values in zip(frame['schema']['fields'], frame['data']['values'])
+                   if field['type'] == 'number' for value in values]
+        assert samples and all(value == 1 for value in samples), 'Recovery scrape is not healthy yet'
         break
-    except Exception:
+    except Exception as error:
+        print(f'Grafana check attempt {attempt + 1}/30: {error}', flush=True)
         if attempt == 29:
             raise
         time.sleep(1)
