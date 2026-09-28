@@ -1,0 +1,34 @@
+groups:
+  - name: recovery
+    rules:
+      - alert: BackupStale
+        expr: time() - recovery_backup_last_success_timestamp_seconds > 7200
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: No backup completed in the last two hours
+          description: Check backup-scheduler logs and backup volume capacity. See docs/runbook.md.
+      - alert: BackupFailed
+        expr: recovery_backup_last_attempt_success == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Most recent backup attempt failed
+      - alert: RestoreFailed
+        expr: recovery_restore_last_attempt_success == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Restore verification failed or has never run
+      - alert: RestoreDrillOverdue
+        expr: time() - recovery_restore_last_attempt_timestamp_seconds > 86400
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: No restore drill recorded in the last day
+      - alert: RecoveryMetricsUnavailable
+        expr: up{job="recovery"} == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Recovery metrics cannot be scraped

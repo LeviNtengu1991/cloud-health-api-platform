@@ -6,3 +6,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+artifacts/
+backups/
+.pytest_cache/
