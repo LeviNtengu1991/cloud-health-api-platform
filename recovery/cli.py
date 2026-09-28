@@ -265,7 +265,19 @@ def metrics(root):
     last = report(root)
     attempt_path = root / 'backup-attempt.json'
     attempt = json.loads(attempt_path.read_text()) if attempt_path.exists() else {'success': False}
+    remote_path = root / 's3-attempt.json'
+    remote = json.loads(remote_path.read_text()) if remote_path.exists() else {}
+    success_path = root / 's3-last-success.json'
+    remote_success = json.loads(success_path.read_text()) if success_path.exists() else {}
+    drill_path = root / 's3-restore-report.json'
+    remote_drill = json.loads(drill_path.read_text()) if drill_path.exists() else {}
     values = {
+        'recovery_s3_enabled': int(bool(os.environ.get('S3_BUCKET'))),
+        'recovery_s3_last_attempt_success': int(remote.get('success', False)),
+        'recovery_s3_snapshot_timestamp_seconds': datetime.fromisoformat(remote_success['snapshot_created_at']).timestamp() if remote_success else 0,
+        'recovery_s3_restore_last_attempt_success': int(remote_drill.get('success', False)),
+        'recovery_s3_restore_last_attempt_timestamp_seconds': datetime.fromisoformat(remote_drill['checked_at']).timestamp() if remote_drill else 0,
+        'recovery_s3_restore_duration_seconds': remote_drill.get('restore_seconds', 0),
         'recovery_backup_last_success_timestamp_seconds': newest,
         'recovery_backup_last_attempt_success': int(attempt['success']),
         'recovery_restore_last_attempt_success': int(last['success']),
@@ -293,10 +305,25 @@ def serve(root, port):
     HTTPServer(('0.0.0.0', port), Handler).serve_forever()
 
 
+def backup_cycle(root, keep):
+    snapshot = backup(root)
+    if os.environ.get('S3_BUCKET'):
+        from recovery import s3
+        s3.upload(root, snapshot['snapshot'])
+    # Upload failure must never cause local retention to remove the fallback.
+    return {'backup': snapshot, 'retention': prune(root, keep)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('backup')
+    for command in ('s3-upload', 's3-download', 's3-drill'):
+        remote = sub.add_parser(command)
+        remote.add_argument('--snapshot', default='latest')
+        if command == 's3-drill':
+            remote.add_argument('--max-age', type=int, default=7200)
+            remote.add_argument('--max-seconds', type=int, default=120)
     restore = sub.add_parser('drill')
     restore.add_argument('--snapshot', default='latest')
     restore.add_argument('--max-age', type=int, default=7200)
@@ -317,11 +344,22 @@ def main():
             parser.error('interval must be >=10 and keep >=1')
         while True:
             try:
-                print(json.dumps(backup(root)), flush=True)
-                print(json.dumps(prune(root, args.keep)), flush=True)
+                print(json.dumps(backup_cycle(root, args.keep)), flush=True)
             except Exception as exc:
                 print(json.dumps({'success': False, 'error_type': type(exc).__name__}), file=sys.stderr, flush=True)
             time.sleep(args.interval)
+    elif args.command.startswith('s3-'):
+        from recovery import s3
+        try:
+            if args.command == 's3-drill':
+                result = s3.drill(root, args.snapshot, args.max_age, args.max_seconds)
+            else:
+                operation = s3.upload if args.command == 's3-upload' else s3.download
+                result = operation(root, args.snapshot)
+            print(json.dumps(result, indent=2))
+        except Exception as exc:
+            print(f'S3 operation failed ({type(exc).__name__}); check configuration and access', file=sys.stderr)
+            raise SystemExit(1)
     elif args.command == 'serve':
         serve(root, args.port)
     else:

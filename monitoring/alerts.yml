@@ -32,3 +32,27 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Recovery metrics cannot be scraped
+      - alert: S3BackupStale
+        expr: (time() - recovery_s3_snapshot_timestamp_seconds > 7200) and on(job,instance) (recovery_s3_enabled == 1)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: No recent snapshot successfully copied to S3
+      - alert: S3BackupFailed
+        expr: (recovery_s3_last_attempt_success == 0) and on(job,instance) (recovery_s3_enabled == 1)
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: S3 upload failed or has never run
+      - alert: S3RestoreFailed
+        expr: (recovery_s3_restore_last_attempt_success == 0) and on(job,instance) (recovery_s3_enabled == 1)
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: S3 restore drill failed or has never run
+      - alert: S3RestoreOverdue
+        expr: (time() - recovery_s3_restore_last_attempt_timestamp_seconds > 86400) and on(job,instance) (recovery_s3_enabled == 1)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: No S3 restore drill recorded in the last day

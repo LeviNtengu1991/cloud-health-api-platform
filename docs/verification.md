@@ -15,3 +15,12 @@ CI runs the same exercise on Ubuntu and uploads `restore-evidence` containing it
 No AWS resources were deployed or modified for this project. The existing Terraform configuration was not changed.
 
 Follow-up on 2026-09-28: all 21 unit tests and the recovery workflow's actionlint check passed again. Docker Desktop could not start on this host, so fresh container builds and database integration verification are delegated to the branch's GitHub Actions workflow. The measurements above remain from the earlier local run.
+
+## S3 and Grafana extension — 2026-09-28
+
+- 36 tests passed locally: the original 21 plus 15 S3/emulator and scheduler safety tests.
+- Coverage includes SSE-S3 upload requests, verified download, incomplete-upload discovery, retry after interrupted manifest publication, corrupted/missing archives, invalid paths and metadata, local overwrite refusal, fresh-download drill behavior, separate failure reports, preserved snapshot age, and skipping local pruning after upload failure.
+- The new standalone S3 Terraform root passed backend-free initialization, formatting, and validation with AWS provider 5.100.0. No plan or apply was run against AWS.
+- Base Compose (including dashboard/testing profiles), the optional S3 overlay, workflow actionlint, monitoring YAML, dashboard JSON, and Git whitespace checks passed.
+- Container builds were attempted but Docker's daemon is unavailable on this host. The new Grafana dashboard has not been rendered locally; container startup, Prometheus rule evaluation, the real PostgreSQL/S3-emulator integration, and Grafana API smoke checks await execution in Docker/CI.
+- CI now contains the S3-emulator integration and Grafana provisioning checks. These are implemented, not claimed as passing remote runs. No real AWS round trip or GitHub CI run has been verified for this extension.

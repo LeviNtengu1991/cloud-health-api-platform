@@ -9,3 +9,6 @@ __pycache__/
 artifacts/
 backups/
 .pytest_cache/
+
+!infra/backup-storage/.terraform.lock.hcl
+*.tfplan

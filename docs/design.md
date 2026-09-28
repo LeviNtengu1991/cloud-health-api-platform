@@ -37,7 +37,7 @@ An archive and manifest are written into a private staging directory. A rename p
 
 Retention is a count of complete snapshots, not a calendar policy. Before pruning old snapshots, the command verifies the retained archives. Seven hourly backups cover roughly seven successful intervals, but failures, manual backups, or a stopped scheduler change that window.
 
-Docker volume persistence is enough for this exercise, not disaster recovery. A next operational step would be encrypted off-host copies with separate deletion permissions and restore tests after downloading them. That capability is not implemented here.
+Docker volume persistence is enough for this exercise, not disaster recovery. The optional S3 extension implements encrypted off-host copies and restore tests after downloading them; see [S3 and Grafana](s3-grafana.md). Application identities do not need delete permissions. Bucket lifecycle, versioning, and dedicated AWS identities need deployment review.
 
 ## Availability and rollback
 

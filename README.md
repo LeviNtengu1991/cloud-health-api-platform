@@ -12,7 +12,7 @@ You need Docker with Compose v2, Python 3, and about 2 GB of free memory for the
 git clone --branch codex/backup-recovery-lab https://github.com/LeviNtengu1991/cloud-health-api-platform.git
 cd cloud-health-api-platform
 python3 scripts/configure.py
-docker compose build db api ops
+make build
 docker compose up -d --wait
 ```
 
@@ -21,6 +21,7 @@ The setup script creates a local `.env` with separate generated passwords and an
 - API: http://localhost:8080
 - Prometheus: http://localhost:9090
 - Recovery metrics: http://localhost:9101/metrics
+- Grafana: http://localhost:3000/d/recovery-lab (start with `make dashboard`; sign in as `admin` using your generated `GRAFANA_ADMIN_PASSWORD`)
 
 All published ports bind to localhost. PostgreSQL has no host port.
 
@@ -45,6 +46,12 @@ make report
 A successful report has `success: true`, matching `expected` and `actual` row counts and SHA-256 fingerprints, `restore_seconds`, and `backup_age_seconds`. These are measurements from that drill, not a claim about a production recovery time.
 
 The backup scheduler runs hourly and keeps seven complete snapshots. Drills are run on demand and in CI. Prometheus warns when a backup is older than two hours, a backup or drill fails, or no drill has run in the last day. Alertmanager notifications are not configured.
+
+## S3 backups and Grafana
+
+The optional extension adds encrypted off-host S3 copies, checksum-verified downloads, and a restore drill that always uses fresh S3 bytes. Grafana comes with an automatically provisioned 11-panel recovery dashboard. S3 and local outcomes have separate metrics and alerts.
+
+See [the setup and demonstration guide](docs/s3-grafana.md). Existing `.env` files need `python3 scripts/configure.py --grafana` before starting Grafana. S3 requires a provisioned bucket and an authorized AWS profile; the optional Terraform configuration creates storage only when explicitly applied. CI uses a local S3 emulator and provisions Grafana without an AWS account.
 
 ## What is running
 
@@ -98,8 +105,8 @@ Only use `clean` when you no longer need the lab records or backups. It does not
 
 ## Limits
 
-This is a local recovery exercise. The backup volume lives on the same Docker host as the database, so losing that host would lose both. An operational deployment needs encrypted off-host storage, access controls, tested retention, and a separate recovery environment. These logical dumps do not provide point-in-time recovery. Adding WAL archiving would be a separate project decision.
+This is a local recovery exercise. By default the backup volume lives on the same Docker host as the database, so losing that host would lose both. Enable the optional S3 extension for off-host copies. An operational deployment needs encrypted off-host storage, access controls, tested retention, and a separate recovery environment. These logical dumps do not provide point-in-time recovery. Adding WAL archiving would be a separate project decision.
 
 The API uses a single local bearer token for writes. It does not implement per-user authentication, TLS, or a complete incident-management product. Read endpoints are unauthenticated; use sample data only. The restore identity has elevated permissions inside its isolated lab server to create and remove scratch databases.
 
-The existing Terraform files still describe the original ECR/ECS/CloudWatch foundation. They do not deploy this PostgreSQL recovery stack, and no AWS infrastructure is changed by these commands.
+The root Terraform files still describe the original ECR/ECS/CloudWatch foundation. They do not deploy this PostgreSQL recovery stack, and no AWS infrastructure is changed by these commands.

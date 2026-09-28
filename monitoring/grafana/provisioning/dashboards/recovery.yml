@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: recovery
+    orgId: 1
+    folder: Recovery Lab
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
