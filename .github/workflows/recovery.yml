@@ -47,6 +47,9 @@ jobs:
         run: |
           docker compose --profile dashboard up -d --wait grafana recovery-metrics
           python3 scripts/check_dashboard.py
+      - name: Grafana failure diagnostics
+        if: failure()
+        run: docker compose logs --tail=150 grafana
       - name: Preserve recovery evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

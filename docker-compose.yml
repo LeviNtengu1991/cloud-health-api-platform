@@ -131,6 +131,8 @@ services:
       GF_USERS_ALLOW_SIGN_UP: 'false'
       GF_ANALYTICS_REPORTING_ENABLED: 'false'
       GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      # Keep bundled plugins usable on the read-only image filesystem.
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: 'false'
       GF_LOG_MODE: console
     entrypoint: [/bin/sh, -ec]
     command:
