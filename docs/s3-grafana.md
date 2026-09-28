@@ -20,7 +20,7 @@ Open http://localhost:3000/d/recovery-lab and sign in as `admin` with `GRAFANA_A
 
 The provisioned dashboard shows metrics availability, local backup age, local restore outcome, retained snapshot count, S3 enablement, S3 snapshot age, upload outcome, S3 restore outcome, restore durations, and firing alerts. S3 panels show no evidence until enabled. Zero status means failure or no previous attempt. Missing metrics means unknown health, not success. The S3 age panel uses the snapshot creation time, so re-uploading an old backup cannot make it look fresh.
 
-Dashboard definitions and the Prometheus data source are committed under `monitoring/grafana`. Edit those files to make durable dashboard changes. Anonymous access and sign-ups are disabled; the port binds only to localhost. Grafana uses a named data volume and a non-root process. `make stop` and `make clean` include the dashboard and test profiles; clean deletes the Grafana database as well as lab data.
+Dashboard definitions and the Prometheus data source are committed under `monitoring/grafana`. Edit those files to make durable dashboard changes. Anonymous access and sign-ups are disabled; the port binds only to localhost. Grafana uses a named data volume and a non-root process. Startup plugin auto-updates are disabled because the bundled plugin directory is read-only; update the pinned Grafana image through review to update its bundled plugins. `make stop` and `make clean` include the dashboard and test profiles; clean deletes the Grafana database as well as lab data.
 
 ## Prepare off-host storage
 
