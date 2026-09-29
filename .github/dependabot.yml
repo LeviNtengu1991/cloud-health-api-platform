@@ -23,3 +23,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /recovery
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /db
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: terraform
+    directory: /infra/backup-storage
+    schedule:
+      interval: weekly
