@@ -1,9 +1,8 @@
 name: Backup and recovery
 on:
   push:
-    branches: [main, codex/backup-recovery-lab]
+    branches: [main, codex/backup-recovery-lab, codex/code-quality-review]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
