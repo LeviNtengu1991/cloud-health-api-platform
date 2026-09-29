@@ -110,3 +110,7 @@ This is a local recovery exercise. By default the backup volume lives on the sam
 The API uses a single local bearer token for writes. It does not implement per-user authentication, TLS, or a complete incident-management product. Read endpoints are unauthenticated; use sample data only. The restore identity has elevated permissions inside its isolated lab server to create and remove scratch databases.
 
 The root Terraform files still describe the original ECR/ECS/CloudWatch foundation. They do not deploy this PostgreSQL recovery stack, and no AWS infrastructure is changed by these commands.
+
+## Code quality and review
+
+Pushes and pull requests run Ruff lint/format checks, Bandit runtime security scans, and Python regression tests. PRs also run the full recovery workflow. See [code quality and DevOps review](docs/code-quality.md) for local commands, automatic Copilot review, and the read-only DevOps reviewer profile.

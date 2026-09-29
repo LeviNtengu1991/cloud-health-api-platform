@@ -31,3 +31,11 @@ s3-upload:
 	docker compose -f docker-compose.yml -f docker-compose.s3.yml run --rm ops s3-upload
 s3-drill:
 	docker compose -f docker-compose.yml -f docker-compose.s3.yml run --rm ops s3-drill
+
+.PHONY: quality test-python
+quality:
+	ruff check .
+	ruff format --check .
+	bandit -r app.py recovery scripts/configure.py
+test-python:
+	python -m unittest discover -s tests -v
