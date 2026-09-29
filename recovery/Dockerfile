@@ -1,4 +1,4 @@
-FROM postgres:17.6-bookworm
+FROM postgres:17.11-bookworm
 # The client major matches the database. Debian supplies Python through apt.
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv \
     && rm -rf /var/lib/apt/lists/* \

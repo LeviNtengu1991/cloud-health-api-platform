@@ -1,43 +1,175 @@
-name: Security and IaC Quality
-
+name: Repository security
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+  pull_request:
   schedule:
-    - cron: "17 6 * * 1"
+    - cron: '17 6 * * 1'
   workflow_dispatch:
-
 permissions:
   contents: read
-  security-events: write
-
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  scan:
-    runs-on: ubuntu-latest
+  secrets:
+    name: Secret history scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Scan repository configuration
-        uses: aquasecurity/trivy-action@0.28.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install verified Gitleaks
+        run: |
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan all fetched history with redacted output
+        run: |
+          mkdir -p artifacts
+          "$RUNNER_TEMP/gitleaks" git . --log-opts=--all --redact --report-format json --report-path artifacts/gitleaks.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: secret-scan-redacted
+          path: artifacts/gitleaks.json
+          retention-days: 14
+  dependencies:
+    name: Python dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-security.txt
+      - name: Audit runtime, test, and quality dependency trees
+        run: |
+          mkdir -p artifacts
+          pip-audit -r requirements.txt -r requirements-test.txt -r requirements-quality.txt -r requirements-security.txt --progress-spinner off --format json --output artifacts/pip-audit.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: dependency-audit
+          path: artifacts/pip-audit.json
+          retention-days: 14
+  codeql:
+    name: CodeQL Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+        with:
+          languages: python
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+        with:
+          output: artifacts/codeql
+      - name: Block high and critical CodeQL findings
+        run: python3 scripts/check_codeql.py artifacts/codeql
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: codeql-report
+          path: artifacts/codeql
+          retention-days: 14
+  configuration:
+    name: Infrastructure security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          version: v0.74.0
           scan-type: config
           scan-ref: .
-          format: sarif
-          output: trivy-results.sarif
+          format: json
+          output: trivy-config.json
           severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      - name: Upload security findings
+          exit-code: '1'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-results.sarif
-
-      - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+          name: infrastructure-security
+          path: trivy-config.json
+          retention-days: 14
+  images:
+    name: Container scan (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: Dockerfile
+            image: local/api:scan
+          - name: recovery
+            dockerfile: recovery/Dockerfile
+            image: local/recovery:scan
+          - name: database
+            dockerfile: db/Dockerfile
+            image: local/database:scan
+          - name: grafana
+            dockerfile: ''
+            image: grafana/grafana:13.2.2
+          - name: prometheus
+            dockerfile: ''
+            image: prom/prometheus:v3.5.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          dockerfile: Dockerfile
-          failure-threshold: warning
+          persist-credentials: false
+      - name: Build deployed image
+        if: matrix.dockerfile != ''
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          IMAGE: ${{ matrix.image }}
+        run: docker build --file "$DOCKERFILE" --tag "$IMAGE" .
+      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          version: v0.74.0
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          format: json
+          output: trivy-image.json
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: container-${{ matrix.name }}
+          path: trivy-image.json
+          retention-days: 14
+  gate:
+    name: Security gate
+    if: always()
+    needs: [secrets, dependencies, codeql, configuration, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every scanner to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = [name for name, job in results.items() if job['result'] != 'success']
+          if failed:
+              raise SystemExit('Security checks did not pass: ' + ', '.join(failed))
+          PY
