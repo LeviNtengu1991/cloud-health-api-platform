@@ -8,7 +8,7 @@ The `Code quality` workflow scans every push and pull request, and supports a ma
 - Ruff format enforces consistent formatting without changing files in CI.
 - Bandit scans application/recovery runtime code and credential configuration, and uploads a JSON report. It intentionally excludes test harnesses that execute disposable failure scenarios. It is not a dependency vulnerability scanner.
 - The regression suite tests the API and recovery/S3 behavior. The separate `Backup and recovery` workflow builds containers and exercises real PostgreSQL restores, S3 emulation, monitoring rules, and Grafana on PRs.
-- Existing Security and IaC Quality and Dependabot configurations remain available. They cover different checks; a passing Python scan does not prove infrastructure is secure.
+- The Repository security workflow adds secret-history, dependency, CodeQL, infrastructure, and container scans. See [security scanning](security-scanning.md) for coverage and failure policies.
 
 Run locally from a virtual environment:
 
@@ -28,6 +28,6 @@ The repository's automatic Copilot rule requests review for PRs targeting any br
 
 Copilot uses `.github/copilot-instructions.md` for review guidance. A separate read-only `devops-reviewer` profile is available in `.github/agents/devops-reviewer.md` for manually selected agent sessions in supported Copilot interfaces. The custom profile is not the automatic-review trigger.
 
-The rule requests reviews; it does not automatically merge or approve infrastructure changes. Existing repository rules are preserved. These checks are visible CI results, not mandatory merge gates unless configured as required status checks. Review the PR, its CI results, and Copilot findings before merging.
+The rule requests reviews; it does not automatically merge or approve infrastructure changes. Existing repository rules are preserved. The required-check ruleset enforces Python quality and security, recovery, and Security gate on the default branch and `codex/backup-recovery-lab`, with up-to-date branches required. Existing PRs without these workflows must incorporate them before merging. Review the PR, its CI results, and Copilot findings before merging.
 
 References: [automatic Copilot review](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review), [custom agents](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents), [Ruff](https://docs.astral.sh/ruff/), [Bandit](https://bandit.readthedocs.io/).

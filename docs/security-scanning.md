@@ -21,3 +21,14 @@ Fix the dependency, image, source, or configuration and rerun the failed job. If
 Pinned scanner/action versions are intentional. Dependabot checks dependencies weekly, including nested Dockerfiles and the S3 Terraform root. Updating a base image can affect availability; run the complete restore, S3, and dashboard integration suite before merging. Roll back through a reviewed revert, preserving the security gate and documenting any vulnerability reintroduced by the rollback.
 
 These workflows consume GitHub Actions minutes and download public vulnerability databases. They do not create AWS resources or introduce AWS usage charges.
+
+## Initial scan findings (2026-09-29)
+
+The first real Actions run passed secret scanning, CodeQL, dependency auditing, and Python quality tests. It exposed existing high/critical container findings in all five image groups. Some Debian findings have no published fix; other findings are in bundled Go binaries/plugins that require upstream image updates. No vulnerability exclusions were added. The Flask finding was fixed by upgrading to 3.1.3.
+
+Configuration findings require deliberate review:
+
+- `DS-0002`, `db/Dockerfile`: the official PostgreSQL entrypoint starts as root to initialize/chown its volume before dropping to postgres. Blindly adding `USER postgres` can break volume initialization. A reviewed, narrowly scoped exception or tested volume-initialization redesign is needed.
+- `AWS-0132`, `infra/backup-storage/main.tf`: backups currently use S3 AES256 server-side encryption. The rule requires a customer-managed KMS key. Adopting KMS changes key lifecycle, permissions, cost, and restore dependencies, and must be designed explicitly. No live AWS change was made.
+
+The active required-check ruleset covers `main` and `codex/backup-recovery-lab`: `Python quality and security`, `recovery`, and `Security gate`. Existing PRs need these workflow definitions before they can satisfy the checks. GitHub native secret scanning, secret push protection, vulnerability alerts, and Dependabot security updates are enabled. CI scanner installation is complete, but the security gate intentionally remains red until the reported findings are remediated or individually reviewed under the exception policy above.
